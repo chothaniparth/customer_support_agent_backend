@@ -1,12 +1,7 @@
-from langchain_core.documents import Document
 from app.ai.retriever import vector_store
 from pathlib import Path
-from langchain_community.document_loaders import (
-    PyPDFLoader,
-    TextLoader
-)
+from langchain_community.document_loaders import PyPDFLoader, TextLoader
 from langchain_text_splitters import RecursiveCharacterTextSplitter
-from app.ai.retriever import vector_store
 
 DOCUMENT_DIR = Path("Documents")
 
@@ -35,6 +30,7 @@ def load_documents():
 
         for doc in loaded:
             doc.metadata["source"] = path.name
+            doc.metadata["user_id"] = "public"  # visible to all authenticated users
 
         documents.extend(loaded)
 

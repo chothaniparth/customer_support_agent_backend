@@ -27,13 +27,14 @@ retriever = vector_store.as_retriever(
 )
 
 def get_user_retriever(user_id: str):
+    # Return docs that belong to this user OR are public (batch-ingested store docs).
     return vector_store.as_retriever(
         search_type="similarity_score_threshold",
         search_kwargs={
             "k": 3,
             "score_threshold": 0.5,
             "filter": {
-                "user_id": {"$eq": user_id}
+                "user_id": {"$in": [user_id, "public"]}
             },
         },
     )

@@ -1,46 +1,56 @@
 from langchain_core.tools import tool, InjectedToolArg
 from typing import Annotated
-from app.ai.retriever import retriever, get_user_retriever
+from app.ai.retriever import retriever as global_retriever, get_user_retriever
 import json
 from app.db.config import admin_supabase
 
 @tool
-def get_order_status(order_id):
-    """Get the current status of an order on order_id."""
-    
-    orders = {
-        "ORD001": "your order has been shipped.",
-        "ORD002": "your order is been processed.",
-        "ORD003": "your order has been delivered.",
-    }
-    
-    return orders.get(order_id, "Order not found")
+def get_order_status(
+    order_number: str,
+    user_id: Annotated[str, InjectedToolArg],
+) -> str:
+    """Get the current status of a specific order belonging to the authenticated customer."""
+    try:
+        result = (
+            admin_supabase.table("orders")
+            .select("order_number,status,total_amount,created_at")
+            .eq("order_number", order_number)
+            .eq("user_id", user_id)
+            .maybe_single()
+            .execute()
+        )
+        if not result.data:
+            return "Order not found."
+        order = result.data
+        return (
+            f"Order {order['order_number']}: status is '{order['status']}', "
+            f"total {order['total_amount']}, placed on {order['created_at']}."
+        )
+    except Exception:
+        return "Could not retrieve order status right now."
 
 @tool
 def search_support_documents(question: str, user_id: Annotated[str, InjectedToolArg]):
-    """Search support documents belonging to the authenticated user."""
-    
-    retriever = get_user_retriever(user_id)
-    docs = retriever.invoke(question)
-    
-    if not docs:
-        return "No relevent support documents were found."
-    
-    results = []
+    """Search support documents for FAQs, product manuals, and store policies."""
 
+    # Try user-scoped docs first (uploaded by this user), then fall back to
+    # global public docs (FAQs, manuals, policies ingested via ingest.py).
+    docs = get_user_retriever(user_id).invoke(question)
+    if not docs:
+        docs = global_retriever.invoke(question)
+
+    if not docs:
+        return "No relevant support documents were found."
+
+    results = []
     for doc in docs:
         source = doc.metadata.get("source", "Unknown source")
-        results.append(
-            f"Source: {source}\nContent: {doc.page_content}"
-        )
+        results.append(f"Source: {source}\nContent: {doc.page_content}")
 
     return "\n\n".join(results)
 
 @tool
-def search_products(
-    query: str,
-    user_id: Annotated[str, InjectedToolArg],
-) -> str:
+def search_products(query: str) -> str:
     """Search the live store product catalog in Supabase.
 
     MUST use this tool when a customer asks about:
@@ -58,6 +68,7 @@ def search_products(
     and stock_quantity. Do not use support-document search for
     current inventory or pricing."""
     try:
+        # Try the full query against SKU first (exact pattern match).
         result = (
             admin_supabase.table("products")
             .select("id,sku,name,description,price,stock_quantity")
@@ -66,10 +77,9 @@ def search_products(
             .limit(10)
             .execute()
         )
-
         products = result.data or []
 
-        # If SKU search has no results, try the product name.
+        # Try the full query against product name.
         if not products:
             result = (
                 admin_supabase.table("products")
@@ -80,6 +90,26 @@ def search_products(
                 .execute()
             )
             products = result.data or []
+
+        # Word-by-word fallback: search each token against SKU then name.
+        # Handles queries like "NK-500 kettle" where words are split.
+        if not products:
+            tokens = [t for t in query.replace("-", " ").split() if len(t) >= 2]
+            seen_ids = set()
+            for token in tokens:
+                for field in ("sku", "name"):
+                    r = (
+                        admin_supabase.table("products")
+                        .select("id,sku,name,description,price,stock_quantity")
+                        .eq("is_active", True)
+                        .ilike(field, f"%{token}%")
+                        .limit(10)
+                        .execute()
+                    )
+                    for p in (r.data or []):
+                        if p["id"] not in seen_ids:
+                            seen_ids.add(p["id"])
+                            products.append(p)
 
         if not products:
             return "No matching active products found."
@@ -215,12 +245,12 @@ def get_my_order(
             )
             .eq("order_number", order_number)
             .eq("user_id", user_id)
-            .maybe_single()
+            .limit(1)
             .execute()
         )
         if not result.data:
             return "Order not found."
-        return json.dumps({"order": result.data}, default=str)
+        return json.dumps({"order": result.data[0]}, default=str)
     except Exception:
         return "Could not retrieve that order right now."
 

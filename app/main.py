@@ -11,8 +11,9 @@ load_dotenv()
 app = FastAPI()
 
 origins = [
-    "http://localhost:3000",      # Common React frontend port
-    "https://yourdomain.com",     # Production domain
+    "http://localhost:3000",
+    "http://localhost:5173",      # Vite dev server
+    "https://yourdomain.com",    # replace with your Vercel URL after deploying frontend
 ]
 
 # Add the CORS middleware to your FastAPI app

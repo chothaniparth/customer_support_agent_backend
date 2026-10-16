@@ -1,6 +1,6 @@
 from langgraph.graph import START, END, StateGraph
 from langgraph.graph.message import add_messages
-from langchain_core.messages import BaseMessage, SystemMessage
+from langchain_core.messages import BaseMessage
 from typing import Annotated, TypedDict
 
 from app.ai.llm import llm_with_tools
@@ -15,8 +15,8 @@ tools = [get_order_status, search_support_documents, search_products, place_cust
 
 
 USER_SCOPED_TOOLS = {
+    "get_order_status",
     "search_support_documents",
-    "search_products",
     "place_customer_order",
     "get_my_orders",
     "get_my_order",

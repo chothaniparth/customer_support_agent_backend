@@ -92,26 +92,26 @@ def get_my_order(
     order_number: str,
     current_user=Depends(get_current_user),
 ):
-    result = (
-        admin_supabase.table("orders")
-        .select(
-            "id,order_number,status,total_amount,created_at,"
-            "updated_at,cancelled_at,"
-            "order_items(id,product_name,sku,quantity,unit_price,line_total)"
+    try:
+        result = (
+            admin_supabase.table("orders")
+            .select(
+                "id,order_number,status,total_amount,created_at,"
+                "updated_at,cancelled_at,"
+                "order_items(id,product_name,sku,quantity,unit_price,line_total)"
+            )
+            .eq("order_number", order_number)
+            .eq("user_id", str(current_user.id))
+            .limit(1)
+            .execute()
         )
-        .eq("order_number", order_number)
-        .eq("user_id", str(current_user.id))
-        .maybe_single()
-        .execute()
-    )
+    except Exception:
+        raise HTTPException(status_code=404, detail="Order not found")
 
     if not result.data:
-        raise HTTPException(
-            status_code=404,
-            detail="Order not found",
-        )
+        raise HTTPException(status_code=404, detail="Order not found")
 
-    return {"order": result.data}
+    return {"order": result.data[0]}
 
 @router.post("/{order_number}/cancel")
 def cancel_order(

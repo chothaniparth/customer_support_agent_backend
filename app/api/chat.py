@@ -1,7 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel 
 from app.db.config import supabase
-from app.ai.llm import generate_response
 from app.core.security import get_current_user
 from app.ai.graph import generate_graph_response
 
@@ -72,6 +71,13 @@ def create_conversation(user=Depends(get_current_user)):
     return response.data[0]
     
 @router.get("/conversation")
-def create_conversation(user=Depends(get_current_user)):
-    supabase.table("conversations").select("id").eq("user_id", user.id).execute()
+def list_conversations(user=Depends(get_current_user)):
+    result = (
+        supabase.table("conversations")
+        .select("id,created_at")
+        .eq("user_id", user.id)
+        .order("created_at", desc=True)
+        .execute()
+    )
+    return result.data or []
 
