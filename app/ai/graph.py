@@ -95,3 +95,40 @@ def generate_graph_response(messages, user_id: str):
     })
 
     return result["messages"][-1].content
+
+def stream_graph_events(messages, user_id: str):
+    """Yield UI events: tool_start, tool_end, token, final. user_id is never emitted."""
+    prompt = customer_support_prompt.invoke({"messages": messages})
+    final_answer = ""
+
+    for mode, payload in graph.stream(
+        {"messages": prompt.to_messages(), "user_id": user_id},
+        stream_mode=["updates", "messages"],
+    ):
+        if mode == "messages":
+            chunk, meta = payload
+            if meta.get("langgraph_node") == "chatbot" and chunk.content:
+                yield {"type": "token", "content": chunk.content}
+            continue
+
+        for node, update in payload.items():
+            for msg in update.get("messages", []):
+                if node == "chatbot":
+                    for call in getattr(msg, "tool_calls", None) or []:
+                        yield {
+                            "type": "tool_start",
+                            "id": call["id"],
+                            "name": call["name"],
+                            "args": call["args"],
+                        }
+                    if not getattr(msg, "tool_calls", None):
+                        final_answer = msg.content
+                elif node == "tools":
+                    text = str(msg["content"] if isinstance(msg, dict) else msg.content)
+                    yield {
+                        "type": "tool_end",
+                        "id": msg["tool_call_id"] if isinstance(msg, dict) else msg.tool_call_id,
+                        "summary": text[:300] + ("…" if len(text) > 300 else ""),
+                    }
+
+    yield {"type": "final", "content": final_answer}
