@@ -74,14 +74,14 @@ def get_product(product_id: UUID):
         )
         .eq("id", str(product_id))
         .eq("is_active", True)
-        .maybe_single()
+        .limit(1)
         .execute()
     )
 
     if not result.data:
         raise HTTPException(status_code=404, detail="Product not found")
 
-    return result.data
+    return result.data[0]
 
 
 # ADMIN: add a product with zero initial stock
